@@ -81,6 +81,6 @@ class CozytouchSwitch(SwitchDevice):
         return {
             "name": self.name,
             "identifiers": {(DOMAIN, self.unique_id)},
-            "manufacturer": "Cozytouch",
+            "manufacturer": self.heater.manufacturer,
             "via_device": (DOMAIN, self.heater.data["placeOID"]),
         }
