@@ -6,16 +6,26 @@ from cozytouchpy import CozytouchException
 from cozytouchpy.constant import DeviceState, DeviceType
 
 import homeassistant.helpers.config_validation as cv
-from homeassistant.components.water_heater import (ATTR_TEMPERATURE, STATE_ECO,
-                                                   STATE_ON, SUPPORT_AWAY_MODE,
-                                                   SUPPORT_OPERATION_MODE,
-                                                   SUPPORT_TARGET_TEMPERATURE,
-                                                   WaterHeaterDevice)
+from homeassistant.components.water_heater import (
+    ATTR_TEMPERATURE,
+    STATE_ECO,
+    STATE_ON,
+    SUPPORT_AWAY_MODE,
+    SUPPORT_OPERATION_MODE,
+    SUPPORT_TARGET_TEMPERATURE,
+    WaterHeaterDevice,
+)
 from homeassistant.const import ATTR_ENTITY_ID, TEMP_CELSIUS
 
-from .const import (ATTR_TIME_PERIOD, COZYTOUCH_DATAS, DOMAIN,
-                    SERVICE_SET_AWAY_MODE, SERVICE_SET_BOOST_MODE, STATE_AUTO,
-                    STATE_MANUEL)
+from .const import (
+    ATTR_TIME_PERIOD,
+    COZYTOUCH_DATAS,
+    DOMAIN,
+    SERVICE_SET_AWAY_MODE,
+    SERVICE_SET_BOOST_MODE,
+    STATE_AUTO,
+    STATE_MANUEL,
+)
 
 DEFAULT_MIN_TEMP = 50
 DEFAULT_MAX_TEMP = 62
@@ -103,6 +113,7 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
     def __init__(self, water_heater):
         """Initialize the sensor."""
         self.water_heater = water_heater
+        self.fetch_datas = None
         self._support_flags = None
         self._target_temperature = None
         self._away = None
@@ -124,12 +135,16 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
     @property
     def target_temperature_high(self):
         """Return the highbound target temperature we try to reach."""
-        return self.water_heater.get_state(DeviceState.MAX_TEMPERATURE_MANUEL_MODE_STATE)
+        return self.fetch_datas.get(
+            DeviceState.MAX_TEMPERATURE_MANUEL_MODE_STATE.value  # pylint: disable=maybe-no-member
+        )
 
     @property
     def target_temperature_low(self):
         """Return the lowbound target temperature we try to reach."""
-        return self.water_heater.get_state(DeviceState.MIN_TEMPERATURE_MANUEL_MODE_STATE)
+        return self.fetch_datas.get(
+            DeviceState.MIN_TEMPERATURE_MANUEL_MODE_STATE.value  # pylint: disable=maybe-no-member
+        )
 
     @property
     def min_temp(self):
@@ -155,7 +170,9 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
     def current_operation(self):
         """Return current operation ie. eco, electric, performance, ..."""
         return COZY_TO_HASS_STATE[
-            self.water_heater.get_state(DeviceState.DHW_MODE_STATE)
+            self.fetch_datas.get(
+                DeviceState.DHW_MODE_STATE.value  # pylint: disable=maybe-no-member
+            )
         ]
 
     @property
@@ -166,23 +183,31 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
     @property
     def current_temperature(self):
         """Return the current temperature."""
-        return self.water_heater.get_state(DeviceState.MIDDLE_WATER_TEMPERATURE_STATE)
+        return self.fetch_datas.get(
+            DeviceState.MIDDLE_WATER_TEMPERATURE_STATE.value  # pylint: disable=maybe-no-member
+        )
 
     @property
     def target_temperature(self):
         """Return the temperature we try to reach."""
-        return self.water_heater.get_state(DeviceState.TARGET_TEMPERATURE_STATE)
+        return self.fetch_datas.get(
+            DeviceState.TARGET_TEMPERATURE_STATE.value  # pylint: disable=maybe-no-member
+        )
 
     @property
     def is_away_mode_on(self):
         """Return true if away mode is on."""
-        om_state = self.water_heater.get_state(DeviceState.OPERATING_MODE_STATE)
+        om_state = self.fetch_datas.get(
+            DeviceState.OPERATING_MODE_STATE.value  # pylint: disable=maybe-no-member
+        )
         return om_state["absence"] == STATE_ON
 
     @property
     def is_boost_mode_on(self):
         """Return true if boost mode is on."""
-        om_state = self.water_heater.get_state(DeviceState.OPERATING_MODE_STATE)
+        om_state = self.fetch_datas.get(
+            DeviceState.OPERATING_MODE_STATE.value  # pylint: disable=maybe-no-member
+        )
         return om_state["relaunch"] == STATE_ON
 
     async def async_set_operation_mode(self, operation_mode):
@@ -210,17 +235,14 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
 
     async def async_turn_boost_mode_off(self):
         """Turn away off."""
-        _LOGGER.debug("Turn off boost mode")
         await self.async_set_boost_mode(0)
 
     async def async_turn_away_mode_on(self):
         """Turn away on."""
-        _LOGGER.debug("Turn on away mode")
         await self.async_set_away_mode(1)
 
     async def async_turn_away_mode_off(self):
         """Turn away off."""
-        _LOGGER.debug("Turn off away mode")
         await self.async_set_away_mode(0)
 
     async def async_update(self):
@@ -231,6 +253,11 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
         except CozytouchException:
             _LOGGER.error("Device data no retrieve {}".format(self.name))
 
+        fdatas = {}
+        for item in self.water_heater.data.get("states"):
+            fdatas.update({item["name"]: item["value"]})
+        self.fetch_datas = fdatas
+
     @property
     def device_info(self):
         """Return the device info."""
@@ -238,7 +265,9 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
             "name": self.name,
             "identifiers": {(DOMAIN, self.unique_id)},
             "manufacturer": self.water_heater.manufacturer,
-            "model": self.water_heater.get_state(DeviceState.DHW_CAPACITY_STATE),
+            "model": self.fetch_datas.get(
+                DeviceState.DHW_CAPACITY_STATE.value  # pylint: disable=maybe-no-member
+            ),
             "via_device": (DOMAIN, self.water_heater.data["placeOID"]),
         }
 
@@ -246,69 +275,79 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
     def device_state_attributes(self):
         """Return the device state attributes."""
         attributes = {
-            "energy_demand": self.water_heater.get_state(
-                DeviceState.OPERATING_MODE_CAPABILITIES_STATE
-            )["energyDemandStatus"] == 1,
-            "aways_mode_duration": self.water_heater.get_state(
-                DeviceState.AWAY_MODE_DURATION_STATE
+            "energy_demand": self.fetch_datas.get(
+                DeviceState.OPERATING_MODE_CAPABILITIES_STATE.value  # pylint: disable=maybe-no-member
+            )["energyDemandStatus"]
+            == 1,
+            "aways_mode_duration": self.fetch_datas.get(
+                DeviceState.AWAY_MODE_DURATION_STATE.value  # pylint: disable=maybe-no-member
             ),
             "boost_mode": self.is_boost_mode_on,
-            "boost_mode_duration": self.water_heater.get_state(
-                DeviceState.BOOST_MODE_DURATION_STATE
+            "boost_mode_duration": self.fetch_datas.get(
+                DeviceState.BOOST_MODE_DURATION_STATE.value  # pylint: disable=maybe-no-member
             ),
-            "boost_mode_start": self.water_heater.get_state(
-                DeviceState.BOOST_START_DATE_STATE
+            "boost_mode_start": self.fetch_datas.get(
+                DeviceState.BOOST_START_DATE_STATE.value  # pylint: disable=maybe-no-member
             ),
-            "boost_mode_end": self.water_heater.get_state(
-                DeviceState.BOOST_END_DATE_STATE
-            ),             
-            "anti_legionellosis": self.water_heater.get_state(
-                DeviceState.ANTI_LEGIONELLOSIS_STATE
+            "boost_mode_end": self.fetch_datas.get(
+                DeviceState.BOOST_END_DATE_STATE.value  # pylint: disable=maybe-no-member
             ),
-            "programmation": self.water_heater.get_state(
-                DeviceState.PROGRAMMING_SLOTS_STATE
+            "anti_legionellosis": self.fetch_datas.get(
+                DeviceState.ANTI_LEGIONELLOSIS_STATE.value  # pylint: disable=maybe-no-member
             ),
-            "V40": self.water_heater.get_state(
-                DeviceState.V40_WATER_VOLUME_ESTIMATION_STATE
+            "programmation": self.fetch_datas.get(
+                DeviceState.PROGRAMMING_SLOTS_STATE.value  # pylint: disable=maybe-no-member
             ),
-            "booster_time": int(
-                self.water_heater.get_state(
-                    DeviceState.ELECTRIC_BOOSTER_OPERATING_TIME_STATE
-                ) or -1
+            "V40": self.fetch_datas.get(
+                DeviceState.V40_WATER_VOLUME_ESTIMATION_STATE.value  # pylint: disable=maybe-no-member
             ),
-            "heatpump_time": int(
-                self.water_heater.get_state(DeviceState.HEAT_PUMP_OPERATING_TIME_STATE) or -1
+            "booster_time": self.fetch_datas.get(
+                DeviceState.ELECTRIC_BOOSTER_OPERATING_TIME_STATE.value  # pylint: disable=maybe-no-member
+            ),
+            "heatpump_time": self.fetch_datas.get(
+                DeviceState.HEAT_PUMP_OPERATING_TIME_STATE.value  # pylint: disable=maybe-no-member
             ),
             "power_electrical": int(
-                self.water_heater.get_state(DeviceState.POWER_HEAT_ELECTRICAL_STATE)
-            ) / 1000,
+                self.fetch_datas.get(
+                    DeviceState.POWER_HEAT_ELECTRICAL_STATE.value  # pylint: disable=maybe-no-member
+                )
+            )
+            / 1000,
             "power_heatpump": int(
-                self.water_heater.get_state(DeviceState.POWER_HEAT_PUMP_STATE)
-            ) / 1000,
+                self.fetch_datas.get(
+                    DeviceState.POWER_HEAT_PUMP_STATE.value  # pylint: disable=maybe-no-member
+                )
+            )
+            / 1000,
             "efficiency": round(
                 (
                     int(
-                        self.water_heater.get_state(
-                            DeviceState.HEAT_PUMP_OPERATING_TIME_STATE
+                        self.fetch_datas.get(
+                            DeviceState.HEAT_PUMP_OPERATING_TIME_STATE.value  # pylint: disable=maybe-no-member
                         )
-                    ) / (
+                    )
+                    / (
                         int(
-                            self.water_heater.get_state(
-                                DeviceState.ELECTRIC_BOOSTER_OPERATING_TIME_STATE
+                            self.fetch_datas.get(
+                                DeviceState.ELECTRIC_BOOSTER_OPERATING_TIME_STATE.value  # pylint: disable=maybe-no-member
                             )
-                        ) + int(
-                            self.water_heater.get_state(
-                                DeviceState.HEAT_PUMP_OPERATING_TIME_STATE
+                        )
+                        + int(
+                            self.fetch_datas.get(
+                                DeviceState.HEAT_PUMP_OPERATING_TIME_STATE.value  # pylint: disable=maybe-no-member
                             )
                         )
                     )
-                ) * 100
+                )
+                * 100
             ),
-            "showers_remaining": int(
-                self.water_heater.get_state(DeviceState.NUM_SHOWER_REMAINING_STATE) or -1
+            "showers_remaining": self.fetch_datas.get(
+                DeviceState.NUM_SHOWER_REMAINING_STATE.value  # pylint: disable=maybe-no-member
             ),
         }
 
         # Remove attributes is empty
-        clean_attributes = {k: v for k, v in attributes.items() if (v is not None and v != -1)}
+        clean_attributes = {
+            k: v for k, v in attributes.items() if (v is not None and v != -1)
+        }
         return clean_attributes
