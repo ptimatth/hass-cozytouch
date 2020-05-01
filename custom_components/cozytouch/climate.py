@@ -2,11 +2,28 @@
 import logging
 
 from cozytouchpy import CozytouchException
-from cozytouchpy.constant import (DeviceState, DeviceType, OperatingModeState,
-                                  TargetingHeatingLevelState)
+from cozytouchpy.constant import (
+    DeviceState,
+    DeviceType,
+    OperatingModeState,
+    TargetingHeatingLevelState,
+)
 
-from homeassistant.components import climate
-from homeassistant.components.climate import const
+from homeassistant.components.climate import ClimateDevice
+from homeassistant.components.climate.const import (
+    PRESET_SLEEP,
+    PRESET_ECO,
+    PRESET_COMFORT,
+    HVAC_MODE_AUTO,
+    HVAC_MODE_HEAT,
+    HVAC_MODE_OFF,
+    SUPPORT_PRESET_MODE,
+    SUPPORT_TARGET_TEMPERATURE,
+    SUPPORT_TARGET_TEMPERATURE_RANGE,
+    ATTR_TARGET_TEMP_HIGH,
+    ATTR_TARGET_TEMP_LOW,
+)
+
 from homeassistant.const import TEMP_CELSIUS
 
 from .const import COZYTOUCH_DATAS, DOMAIN
@@ -27,7 +44,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     async_add_entities(devices, True)
 
 
-class StandaloneCozytouchThermostat(climate.ClimateDevice):
+class StandaloneCozytouchThermostat(ClimateDevice):
     """Representation a thermostat."""
 
     def __init__(self, heater):
@@ -38,14 +55,14 @@ class StandaloneCozytouchThermostat(climate.ClimateDevice):
         self._target_temperature = None
         self._away = None
         self._preset_modes = [
-            const.PRESET_SLEEP,
-            const.PRESET_ECO,
-            const.PRESET_COMFORT,
+            PRESET_SLEEP,
+            PRESET_ECO,
+            PRESET_COMFORT,
         ]
         self._hvac_modes = [
-            const.HVAC_MODE_HEAT,
-            const.HVAC_MODE_OFF,
-            const.HVAC_MODE_AUTO,
+            HVAC_MODE_HEAT,
+            HVAC_MODE_OFF,
+            HVAC_MODE_AUTO,
         ]
         self.__load_features()
 
@@ -57,13 +74,13 @@ class StandaloneCozytouchThermostat(climate.ClimateDevice):
     def __load_features(self):
         """Return the list of supported features."""
         if self.heater.is_state_supported(DeviceState.TARGETING_HEATING_LEVEL_STATE):
-            self.__set_support_flags(const.SUPPORT_PRESET_MODE)
+            self.__set_support_flags(SUPPORT_PRESET_MODE)
         if self.heater.is_state_supported(
             DeviceState.ECO_TEMPERATURE_STATE
         ) and self.heater.is_state_supported(DeviceState.COMFORT_TEMPERATURE_STATE):
-            self.__set_support_flags(const.SUPPORT_TARGET_TEMPERATURE_RANGE)
+            self.__set_support_flags(SUPPORT_TARGET_TEMPERATURE_RANGE)
         else:
-            self.__set_support_flags(const.SUPPORT_TARGET_TEMPERATURE)
+            self.__set_support_flags(SUPPORT_TARGET_TEMPERATURE)
 
     @property
     def unique_id(self):
@@ -98,7 +115,7 @@ class StandaloneCozytouchThermostat(climate.ClimateDevice):
         return {
             "name": self.name,
             "identifiers": {(DOMAIN, self.unique_id)},
-            "manufacturer": "Cozytouch",
+            "manufacturer": self.heater.manufacturer,
             "via_device": (DOMAIN, self.heater.data["placeOID"]),
         }
 
@@ -116,14 +133,14 @@ class StandaloneCozytouchThermostat(climate.ClimateDevice):
     def hvac_mode(self):
         """Return hvac target hvac state."""
         if self.heater.operating_mode == OperatingModeState.STANDBY:
-            return const.HVAC_MODE_OFF
+            return HVAC_MODE_OFF
         elif self.heater.operating_mode == OperatingModeState.BASIC:
-            return const.HVAC_MODE_HEAT
+            return HVAC_MODE_HEAT
         elif self.heater.operating_mode == OperatingModeState.INTERNAL:
-            return const.HVAC_MODE_AUTO
+            return HVAC_MODE_AUTO
         elif self.heater.operating_mode == OperatingModeState.AUTO:
-            return const.HVAC_MODE_AUTO
-        return const.HVAC_MODE_OFF
+            return HVAC_MODE_AUTO
+        return HVAC_MODE_OFF
 
     @property
     def hvac_modes(self):
@@ -139,10 +156,10 @@ class StandaloneCozytouchThermostat(climate.ClimateDevice):
     def preset_mode(self):
         """Return the current preset mode."""
         if self.heater.target_heating_level == TargetingHeatingLevelState.ECO:
-            return const.PRESET_ECO
+            return PRESET_ECO
         if self.heater.target_heating_level == TargetingHeatingLevelState.COMFORT:
-            return const.PRESET_COMFORT
-        return const.PRESET_SLEEP
+            return PRESET_COMFORT
+        return PRESET_SLEEP
 
     @property
     def preset_modes(self):
@@ -159,50 +176,48 @@ class StandaloneCozytouchThermostat(climate.ClimateDevice):
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
-        if const.ATTR_TARGET_TEMP_HIGH in kwargs:
+        if ATTR_TARGET_TEMP_HIGH in kwargs:
             await self.hass.async_add_executor_job(
-                self.heater.set_comfort_temperature, kwargs[const.ATTR_TARGET_TEMP_HIGH]
+                self.heater.set_comfort_temperature, kwargs[ATTR_TARGET_TEMP_HIGH]
             )
             _LOGGER.info(
-                "Set HIGH TEMP to {temp}".format(
-                    temp=kwargs[const.ATTR_TARGET_TEMP_HIGH]
-                )
+                "Set HIGH TEMP to {temp}".format(temp=kwargs[ATTR_TARGET_TEMP_HIGH])
             )
-        if const.ATTR_TARGET_TEMP_LOW in kwargs:
+        if ATTR_TARGET_TEMP_LOW in kwargs:
             await self.hass.async_add_executor_job(
-                self.heater.set_eco_temperature, kwargs[const.ATTR_TARGET_TEMP_LOW]
+                self.heater.set_eco_temperature, kwargs[ATTR_TARGET_TEMP_LOW]
             )
             _LOGGER.info(
-                "Set LOW TEMP to {temp}".format(temp=kwargs[const.ATTR_TARGET_TEMP_LOW])
+                "Set LOW TEMP to {temp}".format(temp=kwargs[ATTR_TARGET_TEMP_LOW])
             )
 
     async def async_set_hvac_mode(self, hvac_mode: str) -> None:
         """Set new target hvac mode. HVAC_MODE_AUTO, HVAC_MODE_HEAT, HVAC_MODE_OFF."""
-        if hvac_mode == const.HVAC_MODE_OFF:
+        if hvac_mode == HVAC_MODE_OFF:
             await self.hass.async_add_executor_job(
                 self.heater.set_operating_mode, OperatingModeState.STANDBY
             )
-        elif hvac_mode == const.HVAC_MODE_HEAT:
+        elif hvac_mode == HVAC_MODE_HEAT:
             await self.hass.async_add_executor_job(
                 self.heater.set_operating_mode, OperatingModeState.BASIC
             )
-        elif hvac_mode == const.HVAC_MODE_AUTO:
+        elif hvac_mode == HVAC_MODE_AUTO:
             await self.hass.async_add_executor_job(
                 self.heater.set_operating_mode, OperatingModeState.INTERNAL
             )
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new preset mode. PRESET_ECO, PRESET_COMFORT."""
-        if preset_mode == const.PRESET_SLEEP:
+        if preset_mode == PRESET_SLEEP:
             await self.hass.async_add_executor_job(
                 self.heater.set_targeting_heating_level,
                 TargetingHeatingLevelState.FROST_PROTECTION,
             )
-        elif preset_mode == const.PRESET_ECO:
+        elif preset_mode == PRESET_ECO:
             await self.hass.async_add_executor_job(
                 self.heater.set_targeting_heating_level, TargetingHeatingLevelState.ECO
             )
-        elif preset_mode == const.PRESET_COMFORT:
+        elif preset_mode == PRESET_COMFORT:
             await self.hass.async_add_executor_job(
                 self.heater.set_targeting_heating_level,
                 TargetingHeatingLevelState.COMFORT,
