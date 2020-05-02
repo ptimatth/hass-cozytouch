@@ -2,7 +2,6 @@
 import logging
 
 import voluptuous as vol
-from cozytouchpy import CozytouchException
 from cozytouchpy.constant import DeviceState, DeviceType
 
 import homeassistant.helpers.config_validation as cv
@@ -17,6 +16,7 @@ from homeassistant.components.water_heater import (
 )
 from homeassistant.const import ATTR_ENTITY_ID, TEMP_CELSIUS
 
+from . import async_make_request
 from .const import (
     ATTR_TIME_PERIOD,
     COZYTOUCH_DATAS,
@@ -212,26 +212,36 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
 
     async def async_set_operation_mode(self, operation_mode):
         """Set new target operation mode."""
-        await self.hass.async_add_executor_job(
-            self.water_heater.set_operating_mode, HASS_TO_COZY_STATE[operation_mode]
+        await async_make_request(
+            self.hass,
+            self.water_heater.set_operating_mode,
+            HASS_TO_COZY_STATE[operation_mode],
         )
+        # await self.hass.async_add_executor_job(
+        #     self.water_heater.set_operating_mode, HASS_TO_COZY_STATE[operation_mode]
+        # )
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
         self._target_temperature = kwargs.get(ATTR_TEMPERATURE)
-        await self.hass.async_add_executor_job(
-            self.water_heater.set_temperature, self._target_temperature
+        await async_make_request(
+            self.hass, self.water_heater.set_temperature, self._target_temperature
         )
+        # await self.hass.async_add_executor_job(
+        #     self.water_heater.set_temperature, self._target_temperature
+        # )
 
     async def async_set_away_mode(self, period):
         """Turn away on."""
         _LOGGER.debug("Set away mode for {} days".format(period))
-        await self.hass.async_add_executor_job(self.water_heater.set_away_mode, period)
+        await async_make_request(self.hass, self.water_heater.set_away_mode, period)
+        # await self.hass.async_add_executor_job(self.water_heater.set_away_mode, period)
 
     async def async_set_boost_mode(self, period):
         """Turn away on."""
         _LOGGER.debug("Set boost mode for {} days".format(period))
-        await self.hass.async_add_executor_job(self.water_heater.set_boost_mode, period)
+        await async_make_request(self.hass, self.water_heater.set_boost_mode, period)
+        # await self.hass.async_add_executor_job(self.water_heater.set_boost_mode, period)
 
     async def async_turn_boost_mode_off(self):
         """Turn away off."""
@@ -248,10 +258,11 @@ class StandaloneCozytouchWaterHeater(WaterHeaterDevice):
     async def async_update(self):
         """Fetch new state data for this sensor."""
         _LOGGER.debug("Update water heater {name}".format(name=self.name))
-        try:
-            await self.hass.async_add_executor_job(self.water_heater.update)
-        except CozytouchException:
-            _LOGGER.error("Device data no retrieve {}".format(self.name))
+        await async_make_request(self.hass, self.water_heater.update)
+        # try:
+        #     await self.hass.async_add_executor_job(self.water_heater.update)
+        # except CozytouchException:
+        #     _LOGGER.error("Device data no retrieve {}".format(self.name))
 
         fdatas = {}
         for item in self.water_heater.data.get("states"):

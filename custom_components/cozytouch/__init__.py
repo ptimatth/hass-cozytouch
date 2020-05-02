@@ -104,3 +104,11 @@ async def async_connect(hass, parameters):
         raise AuthentificationFailed(e)
     except CozytouchException as e:
         raise CozytouchException(e)
+
+
+async def async_make_request(hass, service, *args):
+    """Execute job."""
+    try:
+        return await hass.async_add_executor_job(service, *args)
+    except CozytouchException as e:
+        _LOGGER.error("Error request (APIResponse {})".format(str(e)))
